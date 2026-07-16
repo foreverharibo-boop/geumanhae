@@ -156,6 +156,14 @@
   --gmh-ok: #6bcf7f;
 }
 
+/* ===== 완전 차단 모드: 전송 버튼/입력창 실제 비활성화 ===== */
+.gmh-send-disabled {
+  pointer-events: none !important;
+  opacity: 0.35 !important;
+  filter: grayscale(0.5) !important;
+  cursor: not-allowed !important;
+}
+
 /* ===== 넛지 토스트 (document.documentElement에 append, MovingUI transform 이슈 회피) ===== */
 #gmh-nudge-toast {
   position: fixed;

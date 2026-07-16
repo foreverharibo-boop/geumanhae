@@ -3,7 +3,7 @@ import { extension_settings, getContext } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
 const EXT_ID = "geumanhae";
-const EXT_VERSION = "1.0.4"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
+const EXT_VERSION = "1.0.5"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
 const ACTIVE_TICK_MS = 30 * 1000; // 30초마다 활성 시간 누적 체크
 const IDLE_THRESHOLD_MS = 3 * 60 * 1000; // 3분 이상 입력/조작 없으면 비활성으로 간주
 
@@ -156,6 +156,25 @@ function updateStatUI() {
   const msgBox = panel.querySelector("#gmh-stat-msg-box");
   if (timeBox) timeBox.classList.toggle("gmh-danger", s.timeLimitMin > 0 && usedMin >= s.timeLimitMin);
   if (msgBox) msgBox.classList.toggle("gmh-danger", s.msgLimit > 0 && usedMsg >= s.msgLimit);
+
+  updateSendButtonState();
+}
+
+// ---- 전송 버튼 실제 비활성화 (완전 차단 모드에서 클릭/터치 자체를 막음) ----
+function updateSendButtonState() {
+  const s = getSettings();
+  const shouldBlock = s.enabled && s.mode === "block" && isOverLimit();
+  const sendBtn = document.getElementById("send_but");
+  const textarea = document.getElementById("send_textarea");
+
+  if (sendBtn) {
+    sendBtn.classList.toggle("gmh-send-disabled", shouldBlock);
+    sendBtn.setAttribute("aria-disabled", shouldBlock ? "true" : "false");
+    if ("disabled" in sendBtn) sendBtn.disabled = shouldBlock; // 실제 <button>인 경우 대비
+  }
+  if (textarea) {
+    textarea.classList.toggle("gmh-send-disabled", shouldBlock);
+  }
 }
 
 // ---- 리밋 판정 ----
@@ -292,6 +311,7 @@ function bindSettingsUI() {
     s.enabled = !s.enabled;
     enabledToggle.classList.toggle("gmh-on", s.enabled);
     save();
+    updateSendButtonState();
   });
   nudgeToggle.addEventListener("click", () => {
     s.nudgeEnabled = !s.nudgeEnabled;
@@ -312,6 +332,7 @@ function bindSettingsUI() {
     s.resetTime = resetTimeInput.value || "00:00";
     save();
     checkAndRollPeriod();
+    updateSendButtonState();
   });
   nudgeIntervalInput.addEventListener("change", () => {
     s.nudgeIntervalMin = Math.max(1, parseInt(nudgeIntervalInput.value) || 30);
@@ -323,6 +344,7 @@ function bindSettingsUI() {
       modeGroup.querySelectorAll(".gmh-radio-option").forEach(o => o.classList.remove("gmh-selected"));
       opt.classList.add("gmh-selected");
       save();
+      updateSendButtonState();
     });
   });
   resetBtn.addEventListener("click", () => {
@@ -348,6 +370,7 @@ jQuery(async () => {
   } catch (err) {
     console.error("[그만해] 설정 패널 로드 실패:", err);
   }
+  updateSendButtonState();
 
   // 활동 감지 (활성 시간 트래킹용)
   ["mousedown", "keydown", "touchstart", "scroll"].forEach(evt => {
@@ -367,6 +390,14 @@ jQuery(async () => {
   document.addEventListener("click", (e) => {
     const btn = e.target.closest("#send_but");
     if (!btn) return;
+    interceptSend(e);
+  }, true);
+
+  // Enter키 전송도 동일하게 가로챔 (Shift+Enter는 줄바꿈이라 제외)
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.shiftKey) return;
+    const ta = e.target.closest("#send_textarea");
+    if (!ta) return;
     interceptSend(e);
   }, true);
 
