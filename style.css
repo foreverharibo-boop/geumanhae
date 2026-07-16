@@ -164,37 +164,41 @@
   cursor: not-allowed !important;
 }
 
-/* ===== 넛지 토스트 (Popover API, top layer 렌더링) ===== */
+/* ===== 넛지 토스트 (Popover API, top layer 렌더링, 화면 정중앙 고정) ===== */
 #gmh-nudge-toast {
   position: fixed;
-  bottom: 24px;
+  top: 50%;
   left: 50%;
   right: auto;
-  top: auto;
+  bottom: auto;
   margin: 0;
   border: 1px solid var(--SmartThemeBorderColor);
-  transform: translateX(-50%) translateY(20px);
-  background: rgb(from var(--SmartThemeBlurTintColor) r g b / 0.95);
+  transform: translate(-50%, -50%) scale(0.95);
+  background: rgb(from var(--SmartThemeBlurTintColor) r g b / 1);
   color: var(--SmartThemeBodyColor) !important;
   font-weight: 500;
-  border-radius: 10px;
-  padding: 12px 18px;
-  font-size: 13.5px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-  transition: opacity 0.3s, transform 0.3s;
+  border-radius: 12px;
+  padding: 18px 22px;
+  font-size: 14px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  transition: opacity 0.2s, transform 0.2s;
   max-width: 320px;
-  width: max-content;
+  width: 90%;
   text-align: center;
   filter: none !important;
   backdrop-filter: none !important;
   text-shadow: none !important;
+  z-index: 2147483647;
+}
+#gmh-nudge-toast::backdrop {
+  background: rgba(0,0,0,0.4);
 }
 #gmh-nudge-toast:not(.gmh-show) {
   opacity: 0;
 }
 #gmh-nudge-toast.gmh-show {
   opacity: 1 !important;
-  transform: translateX(-50%) translateY(0);
+  transform: translate(-50%, -50%) scale(1);
 }
 
 /* ===== 리밋 초과 모달 (native <dialog>, top layer 렌더링) ===== */

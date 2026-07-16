@@ -3,7 +3,7 @@ import { extension_settings, getContext } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
 const EXT_ID = "geumanhae";
-const EXT_VERSION = "1.1.0"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
+const EXT_VERSION = "1.1.2"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
 const ACTIVE_TICK_MS = 30 * 1000; // 30초마다 활성 시간 누적 체크
 const IDLE_THRESHOLD_MS = 3 * 60 * 1000; // 3분 이상 입력/조작 없으면 비활성으로 간주
 
@@ -119,15 +119,21 @@ function showNudgeToast(message) {
     document.documentElement.appendChild(toast);
   }
   toast.textContent = message;
-  toast.style.setProperty("color", "var(--SmartThemeBodyColor)", "important");
-  toast.style.setProperty("filter", "none", "important");
-  toast.style.setProperty("text-shadow", "none", "important");
+  const set = (k, v) => toast.style.setProperty(k, v, "important");
+  set("position", "fixed");
+  set("top", "50%");
+  set("left", "50%");
+  set("margin", "0");
+  set("color", "var(--SmartThemeBodyColor)");
+  set("filter", "none");
+  set("text-shadow", "none");
   if (!toast.matches(":popover-open")) {
     try { toast.showPopover(); } catch (err) { console.error("[그만해] 넛지 토스트 표시 실패:", err); }
   }
   requestAnimationFrame(() => {
     toast.classList.add("gmh-show");
-    toast.style.setProperty("opacity", "1", "important");
+    set("opacity", "1");
+    set("transform", "translate(-50%, -50%) scale(1)");
   });
   clearTimeout(toast._hideTimer);
   toast._hideTimer = setTimeout(() => {
@@ -355,25 +361,27 @@ function bindSettingsUI() {
     nudgeToggle.classList.toggle("gmh-on", s.nudgeEnabled);
     save();
   });
-  timeLimitInput.addEventListener("change", () => {
-    s.timeLimitMin = Math.max(0, parseInt(timeLimitInput.value) || 0);
-    save();
-    updateStatUI();
-  });
-  msgLimitInput.addEventListener("change", () => {
-    s.msgLimit = Math.max(0, parseInt(msgLimitInput.value) || 0);
-    save();
-    updateStatUI();
+  ["change", "input"].forEach(evt => {
+    timeLimitInput.addEventListener(evt, () => {
+      s.timeLimitMin = Math.max(0, parseInt(timeLimitInput.value) || 0);
+      save();
+      updateStatUI();
+    });
+    msgLimitInput.addEventListener(evt, () => {
+      s.msgLimit = Math.max(0, parseInt(msgLimitInput.value) || 0);
+      save();
+      updateStatUI();
+    });
+    nudgeIntervalInput.addEventListener(evt, () => {
+      s.nudgeIntervalMin = Math.max(1, parseInt(nudgeIntervalInput.value) || 30);
+      save();
+    });
   });
   resetTimeInput.addEventListener("change", () => {
     s.resetTime = resetTimeInput.value || "00:00";
     save();
     checkAndRollPeriod();
     updateSendButtonState();
-  });
-  nudgeIntervalInput.addEventListener("change", () => {
-    s.nudgeIntervalMin = Math.max(1, parseInt(nudgeIntervalInput.value) || 30);
-    save();
   });
   modeGroup.querySelectorAll(".gmh-radio-option").forEach(opt => {
     opt.addEventListener("click", () => {
