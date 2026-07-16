@@ -175,21 +175,25 @@
   border: 1px solid var(--SmartThemeBorderColor);
   transform: translateX(-50%) translateY(20px);
   background: rgb(from var(--SmartThemeBlurTintColor) r g b / 0.95);
-  color: var(--SmartThemeBodyColor);
+  color: var(--SmartThemeBodyColor) !important;
+  font-weight: 500;
   border-radius: 10px;
   padding: 12px 18px;
   font-size: 13.5px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-  opacity: 0;
   transition: opacity 0.3s, transform 0.3s;
   max-width: 320px;
   width: max-content;
   text-align: center;
   filter: none !important;
   backdrop-filter: none !important;
+  text-shadow: none !important;
+}
+#gmh-nudge-toast:not(.gmh-show) {
+  opacity: 0;
 }
 #gmh-nudge-toast.gmh-show {
-  opacity: 1;
+  opacity: 1 !important;
   transform: translateX(-50%) translateY(0);
 }
 

@@ -3,7 +3,7 @@ import { extension_settings, getContext } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
 const EXT_ID = "geumanhae";
-const EXT_VERSION = "1.0.9"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
+const EXT_VERSION = "1.1.0"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
 const ACTIVE_TICK_MS = 30 * 1000; // 30초마다 활성 시간 누적 체크
 const IDLE_THRESHOLD_MS = 3 * 60 * 1000; // 3분 이상 입력/조작 없으면 비활성으로 간주
 
@@ -119,13 +119,20 @@ function showNudgeToast(message) {
     document.documentElement.appendChild(toast);
   }
   toast.textContent = message;
+  toast.style.setProperty("color", "var(--SmartThemeBodyColor)", "important");
+  toast.style.setProperty("filter", "none", "important");
+  toast.style.setProperty("text-shadow", "none", "important");
   if (!toast.matches(":popover-open")) {
     try { toast.showPopover(); } catch (err) { console.error("[그만해] 넛지 토스트 표시 실패:", err); }
   }
-  requestAnimationFrame(() => toast.classList.add("gmh-show"));
+  requestAnimationFrame(() => {
+    toast.classList.add("gmh-show");
+    toast.style.setProperty("opacity", "1", "important");
+  });
   clearTimeout(toast._hideTimer);
   toast._hideTimer = setTimeout(() => {
     toast.classList.remove("gmh-show");
+    toast.style.removeProperty("opacity");
     setTimeout(() => { try { toast.hidePopover(); } catch (err) {} }, 300);
   }, 6000);
 }
