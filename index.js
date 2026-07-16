@@ -170,10 +170,12 @@ function isOverLimit() {
 function interceptSend(e) {
   const s = getSettings();
   checkAndRollPeriod();
+  console.log("[그만해] 전송 감지 - enabled:", s.enabled, "메시지:", s.data.messageCount, "/", s.msgLimit, "시간(분):", Math.floor(s.data.totalActiveMs / 60000), "/", s.timeLimitMin);
   if (!s.enabled) return; // 통과
   if (bypassOnce) { bypassOnce = false; return; } // 이번 한 번은 통과
   if (!isOverLimit()) return; // 아직 안 넘음, 통과
 
+  console.log("[그만해] 리밋 초과 → 모달 표시, mode:", s.mode);
   // 리밋 초과 → 여기서 막는다
   e.preventDefault();
   e.stopImmediatePropagation();
@@ -326,10 +328,14 @@ jQuery(async () => {
   const s = getSettings();
   checkAndRollPeriod();
 
-  const html = await $.get(`scripts/extensions/third-party/${EXT_ID}/settings.html`);
-  $("#extensions_settings2").append(html);
-  bindSettingsUI();
-  updateStatUI();
+  try {
+    const html = await $.get(`scripts/extensions/third-party/${EXT_ID}/settings.html`);
+    $("#extensions_settings2").append(html);
+    bindSettingsUI();
+    updateStatUI();
+  } catch (err) {
+    console.error("[그만해] 설정 패널 로드 실패:", err);
+  }
 
   // 활동 감지 (활성 시간 트래킹용)
   ["mousedown", "keydown", "touchstart", "scroll"].forEach(evt => {
@@ -345,11 +351,14 @@ jQuery(async () => {
     updateStatUI();
   });
 
-  // 전송 버튼 인터셉트 (캡처 단계에서 먼저 가로챔)
-  const sendBtn = document.getElementById("send_but");
-  if (sendBtn) {
-    sendBtn.addEventListener("click", interceptSend, true);
-  }
+  // 전송 버튼 인터셉트 (document에 위임 - 버튼이 나중에 생기거나 다시 그려져도 안 끊김)
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("#send_but");
+    if (!btn) return;
+    interceptSend(e);
+  }, true);
 
   tickTimer = setInterval(tick, ACTIVE_TICK_MS);
+
+  console.log("[그만해] 초기화 완료");
 });
