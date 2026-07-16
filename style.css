@@ -191,6 +191,14 @@ dialog#gmh-limit-modal-native {
   width: 90%;
   text-align: center;
   margin: auto; /* UA가 top layer 안에서 중앙 정렬 */
+  filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+dialog#gmh-limit-modal-native * {
+  filter: none !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
 }
 dialog#gmh-limit-modal-native::backdrop {
   background: rgba(0,0,0,0.6);
@@ -202,6 +210,8 @@ dialog#gmh-limit-modal-native::backdrop {
 }
 #gmh-limit-modal-native .gmh-modal-body {
   font-size: 13px;
+  font-weight: 500;
+  color: var(--SmartThemeBodyColor) !important;
   margin-bottom: 18px;
   line-height: 1.5;
 }

@@ -3,7 +3,7 @@ import { extension_settings, getContext } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
 const EXT_ID = "geumanhae";
-const EXT_VERSION = "1.0.3"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
+const EXT_VERSION = "1.0.4"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
 const ACTIVE_TICK_MS = 30 * 1000; // 30초마다 활성 시간 누적 체크
 const IDLE_THRESHOLD_MS = 3 * 60 * 1000; // 3분 이상 입력/조작 없으면 비활성으로 간주
 
