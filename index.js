@@ -3,7 +3,7 @@ import { extension_settings, getContext } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
 const EXT_ID = "geumanhae";
-const EXT_VERSION = "1.0.7"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
+const EXT_VERSION = "1.0.9"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
 const ACTIVE_TICK_MS = 30 * 1000; // 30초마다 활성 시간 누적 체크
 const IDLE_THRESHOLD_MS = 3 * 60 * 1000; // 3분 이상 입력/조작 없으면 비활성으로 간주
 
@@ -115,13 +115,19 @@ function showNudgeToast(message) {
   if (!toast) {
     toast = document.createElement("div");
     toast.id = "gmh-nudge-toast";
-    // MovingUI가 body에 transform을 걸어서 position:fixed가 깨지는 문제 회피
+    toast.setAttribute("popover", "manual"); // top layer 렌더링, 부모 transform 영향 안 받음
     document.documentElement.appendChild(toast);
   }
   toast.textContent = message;
-  toast.classList.add("gmh-show");
+  if (!toast.matches(":popover-open")) {
+    try { toast.showPopover(); } catch (err) { console.error("[그만해] 넛지 토스트 표시 실패:", err); }
+  }
+  requestAnimationFrame(() => toast.classList.add("gmh-show"));
   clearTimeout(toast._hideTimer);
-  toast._hideTimer = setTimeout(() => toast.classList.remove("gmh-show"), 6000);
+  toast._hideTimer = setTimeout(() => {
+    toast.classList.remove("gmh-show");
+    setTimeout(() => { try { toast.hidePopover(); } catch (err) {} }, 300);
+  }, 6000);
 }
 
 // ---- 통계 UI 갱신 ----
@@ -253,7 +259,7 @@ function openDialog(innerHtml) {
 function showBypassModal() {
   const dlg = openDialog(`
     <div class="gmh-modal-title">오늘 목표 넘었어</div>
-    <div class="gmh-modal-body">설정한 사용 시간/메시지 한도를 초과했어. 그래도 계속 쓸래?</div>
+    <div class="gmh-modal-body">설정한 사용 시간/메시지 한도를 초과했어.<br>그래도 계속 쓸래?</div>
     <div class="gmh-modal-btns">
       <button id="gmh-modal-cancel">그만할게</button>
       <button id="gmh-modal-continue" class="gmh-btn-primary">그래도 계속</button>
