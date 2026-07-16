@@ -3,7 +3,7 @@ import { extension_settings, getContext } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
 const EXT_ID = "geumanhae";
-const EXT_VERSION = "1.0.5"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
+const EXT_VERSION = "1.0.7"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
 const ACTIVE_TICK_MS = 30 * 1000; // 30초마다 활성 시간 누적 체크
 const IDLE_THRESHOLD_MS = 3 * 60 * 1000; // 3분 이상 입력/조작 없으면 비활성으로 간주
 
@@ -166,6 +166,8 @@ function updateSendButtonState() {
   const shouldBlock = s.enabled && s.mode === "block" && isOverLimit();
   const sendBtn = document.getElementById("send_but");
   const textarea = document.getElementById("send_textarea");
+  const panel = document.getElementById("geumanhae-panel");
+  const resetBtn = panel ? panel.querySelector("#gmh-reset-today-btn") : null;
 
   if (sendBtn) {
     sendBtn.classList.toggle("gmh-send-disabled", shouldBlock);
@@ -174,6 +176,23 @@ function updateSendButtonState() {
   }
   if (textarea) {
     textarea.classList.toggle("gmh-send-disabled", shouldBlock);
+  }
+  if (resetBtn) {
+    // 완전 차단 중엔 초기화 버튼으로 우회 못 하게 같이 잠금
+    resetBtn.disabled = shouldBlock;
+    resetBtn.classList.toggle("gmh-send-disabled", shouldBlock);
+    resetBtn.title = shouldBlock ? "완전 차단 중엔 초기화할 수 없어 (리셋 시각까지 대기)" : "";
+  }
+
+  const enabledToggle = panel ? panel.querySelector("#gmh-enabled-toggle") : null;
+  const modeGroup = panel ? panel.querySelector("#gmh-mode-group") : null;
+  if (enabledToggle) {
+    enabledToggle.classList.toggle("gmh-send-disabled", shouldBlock);
+    enabledToggle.title = shouldBlock ? "완전 차단 중엔 끌 수 없어 (리셋 시각까지 대기)" : "";
+  }
+  if (modeGroup) {
+    modeGroup.classList.toggle("gmh-send-disabled", shouldBlock);
+    modeGroup.title = shouldBlock ? "완전 차단 중엔 모드를 바꿀 수 없어 (리셋 시각까지 대기)" : "";
   }
 }
 
@@ -308,6 +327,11 @@ function bindSettingsUI() {
   });
 
   enabledToggle.addEventListener("click", () => {
+    const cur = getSettings();
+    if (cur.enabled && cur.mode === "block" && isOverLimit()) {
+      showNudgeToast("완전 차단 중엔 활성화를 끌 수 없어. 리셋 시각까지 기다려줘.");
+      return;
+    }
     s.enabled = !s.enabled;
     enabledToggle.classList.toggle("gmh-on", s.enabled);
     save();
@@ -340,6 +364,11 @@ function bindSettingsUI() {
   });
   modeGroup.querySelectorAll(".gmh-radio-option").forEach(opt => {
     opt.addEventListener("click", () => {
+      const cur = getSettings();
+      if (cur.enabled && cur.mode === "block" && isOverLimit()) {
+        showNudgeToast("완전 차단 중엔 모드를 바꿀 수 없어. 리셋 시각까지 기다려줘.");
+        return;
+      }
       s.mode = opt.dataset.mode;
       modeGroup.querySelectorAll(".gmh-radio-option").forEach(o => o.classList.remove("gmh-selected"));
       opt.classList.add("gmh-selected");
@@ -348,9 +377,15 @@ function bindSettingsUI() {
     });
   });
   resetBtn.addEventListener("click", () => {
-    s.data.totalActiveMs = 0;
-    s.data.messageCount = 0;
-    s.data.lastNudgeAt = null;
+    const cur = getSettings();
+    const blocked = cur.enabled && cur.mode === "block" && isOverLimit();
+    if (blocked) {
+      showNudgeToast("완전 차단 중엔 초기화할 수 없어. 리셋 시각까지 기다려줘.");
+      return;
+    }
+    cur.data.totalActiveMs = 0;
+    cur.data.messageCount = 0;
+    cur.data.lastNudgeAt = null;
     bypassOnce = false;
     save();
     updateStatUI();
