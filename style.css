@@ -180,19 +180,8 @@
   transform: translateX(-50%) translateY(0);
 }
 
-/* ===== 리밋 초과 모달 ===== */
-#gmh-limit-modal-backdrop {
-  position: fixed !important;
-  inset: 0 !important;
-  background: rgba(0,0,0,0.6) !important;
-  z-index: 2147483647 !important;
-}
-#gmh-limit-modal {
-  position: fixed !important;
-  top: 50% !important;
-  left: 50% !important;
-  transform: translate(-50%, -50%) !important;
-  margin: 0 !important;
+/* ===== 리밋 초과 모달 (native <dialog>, top layer 렌더링) ===== */
+dialog#gmh-limit-modal-native {
   background: rgb(from var(--SmartThemeBlurTintColor) r g b / 1);
   color: var(--SmartThemeBodyColor);
   border: 1px solid var(--SmartThemeBorderColor);
@@ -201,22 +190,26 @@
   max-width: 320px;
   width: 90%;
   text-align: center;
+  margin: auto; /* UA가 top layer 안에서 중앙 정렬 */
 }
-#gmh-limit-modal .gmh-modal-title {
+dialog#gmh-limit-modal-native::backdrop {
+  background: rgba(0,0,0,0.6);
+}
+#gmh-limit-modal-native .gmh-modal-title {
   font-size: 16px;
   font-weight: 700;
   margin-bottom: 8px;
 }
-#gmh-limit-modal .gmh-modal-body {
+#gmh-limit-modal-native .gmh-modal-body {
   font-size: 13px;
   margin-bottom: 18px;
   line-height: 1.5;
 }
-#gmh-limit-modal .gmh-modal-btns {
+#gmh-limit-modal-native .gmh-modal-btns {
   display: flex;
   gap: 8px;
 }
-#gmh-limit-modal button {
+#gmh-limit-modal-native button {
   flex: 1;
   padding: 9px;
   border-radius: 8px;
@@ -226,13 +219,13 @@
   cursor: pointer;
   font-size: 13px;
 }
-#gmh-limit-modal button.gmh-btn-primary {
+#gmh-limit-modal-native button.gmh-btn-primary {
   background: var(--gmh-accent, #6c9ef8);
   border-color: transparent;
   color: #111;
   font-weight: 600;
 }
-#gmh-limit-modal .gmh-countdown {
+#gmh-limit-modal-native .gmh-countdown {
   font-size: 20px;
   font-weight: 700;
   margin-bottom: 10px;

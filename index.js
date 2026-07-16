@@ -3,7 +3,7 @@ import { extension_settings, getContext } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
 const EXT_ID = "geumanhae";
-const EXT_VERSION = "1.0.2"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
+const EXT_VERSION = "1.0.3"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
 const ACTIVE_TICK_MS = 30 * 1000; // 30초마다 활성 시간 누적 체크
 const IDLE_THRESHOLD_MS = 3 * 60 * 1000; // 3분 이상 입력/조작 없으면 비활성으로 간주
 
@@ -188,55 +188,40 @@ function interceptSend(e) {
   }
 }
 
-function forceCenterModal(backdrop, modal) {
-  // style.css 캐싱 이슈를 우회하기 위해 인라인으로 직접 강제 고정
-  const set = (el, obj) => {
-    for (const [k, v] of Object.entries(obj)) {
-      el.style.setProperty(k, v, "important");
-    }
-  };
-  set(backdrop, {
-    "position": "fixed",
-    "top": "0", "left": "0", "right": "0", "bottom": "0",
-    "background": "rgba(0,0,0,0.6)",
-    "z-index": "2147483647",
-    "margin": "0", "padding": "0",
-  });
-  set(modal, {
-    "position": "fixed",
-    "top": "50%",
-    "left": "50%",
-    "transform": "translate(-50%, -50%)",
-    "margin": "0",
-    "z-index": "2147483647",
-  });
-  modal.querySelectorAll(".gmh-modal-body, .gmh-modal-title, .gmh-countdown").forEach(el => {
-    el.style.setProperty("opacity", "1", "important");
-  });
+function closeModal() {
+  const dlg = document.getElementById("gmh-limit-modal-native");
+  if (dlg) {
+    dlg.close();
+    dlg.remove();
+  }
 }
 
-function closeModal() {
-  const backdrop = document.getElementById("gmh-limit-modal-backdrop");
-  if (backdrop) backdrop.remove();
+function openDialog(innerHtml) {
+  closeModal();
+  const dlg = document.createElement("dialog");
+  dlg.id = "gmh-limit-modal-native";
+  dlg.innerHTML = innerHtml;
+  document.documentElement.appendChild(dlg);
+  // native <dialog>.showModal()은 top layer에 렌더링돼서
+  // 조상 요소의 transform/overflow/z-index에 영향을 안 받음
+  dlg.showModal();
+  dlg.addEventListener("cancel", closeModal); // ESC/뒤로가기 대응
+  dlg.addEventListener("click", (e) => {
+    if (e.target === dlg) closeModal(); // 바깥 클릭 시 닫기
+  });
+  return dlg;
 }
 
 function showBypassModal() {
-  closeModal();
-  const backdrop = document.createElement("div");
-  backdrop.id = "gmh-limit-modal-backdrop";
-  backdrop.innerHTML = `
-    <div id="gmh-limit-modal">
-      <div class="gmh-modal-title">오늘 목표 넘었어</div>
-      <div class="gmh-modal-body">설정한 사용 시간/메시지 한도를 초과했어. 그래도 계속 쓸래?</div>
-      <div class="gmh-modal-btns">
-        <button id="gmh-modal-cancel">그만할게</button>
-        <button id="gmh-modal-continue" class="gmh-btn-primary">그래도 계속</button>
-      </div>
-    </div>`;
-  document.documentElement.appendChild(backdrop);
-  forceCenterModal(backdrop, backdrop.querySelector("#gmh-limit-modal"));
-  backdrop.querySelector("#gmh-modal-cancel").onclick = closeModal;
-  backdrop.querySelector("#gmh-modal-continue").onclick = () => {
+  const dlg = openDialog(`
+    <div class="gmh-modal-title">오늘 목표 넘었어</div>
+    <div class="gmh-modal-body">설정한 사용 시간/메시지 한도를 초과했어. 그래도 계속 쓸래?</div>
+    <div class="gmh-modal-btns">
+      <button id="gmh-modal-cancel">그만할게</button>
+      <button id="gmh-modal-continue" class="gmh-btn-primary">그래도 계속</button>
+    </div>`);
+  dlg.querySelector("#gmh-modal-cancel").onclick = closeModal;
+  dlg.querySelector("#gmh-modal-continue").onclick = () => {
     bypassOnce = true;
     closeModal();
     document.getElementById("send_but")?.click();
@@ -244,7 +229,6 @@ function showBypassModal() {
 }
 
 function showBlockModal() {
-  closeModal();
   const s = getSettings();
   const [h, m] = s.resetTime.split(":").map(Number);
   const now = new Date();
@@ -252,25 +236,19 @@ function showBlockModal() {
   nextReset.setHours(h, m, 0, 0);
   if (nextReset <= now) nextReset.setDate(nextReset.getDate() + 1);
 
-  const backdrop = document.createElement("div");
-  backdrop.id = "gmh-limit-modal-backdrop";
-  backdrop.innerHTML = `
-    <div id="gmh-limit-modal">
-      <div class="gmh-modal-title">오늘은 여기까지</div>
-      <div class="gmh-countdown" id="gmh-countdown">--:--:--</div>
-      <div class="gmh-modal-body">완전 차단 모드라 리셋 시각까지는 전송이 안 돼.</div>
-      <div class="gmh-modal-btns">
-        <button id="gmh-modal-close" class="gmh-btn-primary">알겠어</button>
-      </div>
-    </div>`;
-  document.documentElement.appendChild(backdrop);
-  forceCenterModal(backdrop, backdrop.querySelector("#gmh-limit-modal"));
-  backdrop.querySelector("#gmh-modal-close").onclick = closeModal;
+  const dlg = openDialog(`
+    <div class="gmh-modal-title">오늘은 여기까지</div>
+    <div class="gmh-countdown" id="gmh-countdown">--:--:--</div>
+    <div class="gmh-modal-body">완전 차단 모드라 리셋 시각까지는 전송이 안 돼.</div>
+    <div class="gmh-modal-btns">
+      <button id="gmh-modal-close" class="gmh-btn-primary">알겠어</button>
+    </div>`);
+  dlg.querySelector("#gmh-modal-close").onclick = closeModal;
 
-  const countdownEl = backdrop.querySelector("#gmh-countdown");
+  const countdownEl = dlg.querySelector("#gmh-countdown");
   const timer = setInterval(() => {
     const diff = nextReset - Date.now();
-    if (diff <= 0 || !document.body.contains(backdrop)) {
+    if (diff <= 0 || !document.documentElement.contains(dlg)) {
       clearInterval(timer);
       return;
     }
