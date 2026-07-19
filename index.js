@@ -3,7 +3,7 @@ import { extension_settings, getContext } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
 const EXT_ID = "geumanhae";
-const EXT_VERSION = "1.1.2"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
+const EXT_VERSION = "1.1.5"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
 const ACTIVE_TICK_MS = 30 * 1000; // 30초마다 활성 시간 누적 체크
 const IDLE_THRESHOLD_MS = 3 * 60 * 1000; // 3분 이상 입력/조작 없으면 비활성으로 간주
 
@@ -25,6 +25,7 @@ const defaultSettings = {
 };
 
 let lastActivityAt = Date.now();
+let isPageVisible = !document.hidden;
 let tickTimer = null;
 let bypassOnce = false; // "그래도 계속" 눌렀을 때 한 번만 통과시키는 플래그
 
@@ -85,8 +86,7 @@ function tick() {
   if (!s.enabled) return updateStatUI();
 
   const idle = Date.now() - lastActivityAt > IDLE_THRESHOLD_MS;
-  const hidden = document.hidden;
-  if (!idle && !hidden) {
+  if (!idle && isPageVisible) {
     s.data.totalActiveMs += ACTIVE_TICK_MS;
     save();
   }
@@ -212,6 +212,24 @@ function updateSendButtonState() {
   if (modeGroup) {
     modeGroup.classList.toggle("gmh-send-disabled", shouldBlock);
     modeGroup.title = shouldBlock ? "완전 차단 중엔 모드를 바꿀 수 없어 (리셋 시각까지 대기)" : "";
+  }
+
+  // 리밋 숫자 자체를 늘려서 우회하는 것도 막음
+  const timeLimitInput = panel ? panel.querySelector("#gmh-time-limit-input") : null;
+  const msgLimitInput = panel ? panel.querySelector("#gmh-msg-limit-input") : null;
+  [timeLimitInput, msgLimitInput].forEach(inp => {
+    if (!inp) return;
+    inp.disabled = shouldBlock;
+    inp.classList.toggle("gmh-send-disabled", shouldBlock);
+    inp.title = shouldBlock ? "완전 차단 중엔 제한값을 바꿀 수 없어 (리셋 시각까지 대기)" : "";
+  });
+
+  // 리셋 시각을 앞당겨서 강제로 새 주기로 넘기는 우회도 막음
+  const resetTimeInput = panel ? panel.querySelector("#gmh-reset-time-input") : null;
+  if (resetTimeInput) {
+    resetTimeInput.disabled = shouldBlock;
+    resetTimeInput.classList.toggle("gmh-send-disabled", shouldBlock);
+    resetTimeInput.title = shouldBlock ? "완전 차단 중엔 리셋 시각을 바꿀 수 없어" : "";
   }
 }
 
@@ -363,11 +381,21 @@ function bindSettingsUI() {
   });
   ["change", "input"].forEach(evt => {
     timeLimitInput.addEventListener(evt, () => {
+      const cur = getSettings();
+      if (cur.enabled && cur.mode === "block" && isOverLimit()) {
+        timeLimitInput.value = cur.timeLimitMin; // 완전 차단 중엔 값 되돌림
+        return;
+      }
       s.timeLimitMin = Math.max(0, parseInt(timeLimitInput.value) || 0);
       save();
       updateStatUI();
     });
     msgLimitInput.addEventListener(evt, () => {
+      const cur = getSettings();
+      if (cur.enabled && cur.mode === "block" && isOverLimit()) {
+        msgLimitInput.value = cur.msgLimit; // 완전 차단 중엔 값 되돌림
+        return;
+      }
       s.msgLimit = Math.max(0, parseInt(msgLimitInput.value) || 0);
       save();
       updateStatUI();
@@ -378,6 +406,12 @@ function bindSettingsUI() {
     });
   });
   resetTimeInput.addEventListener("change", () => {
+    const cur = getSettings();
+    if (cur.enabled && cur.mode === "block" && isOverLimit()) {
+      resetTimeInput.value = cur.resetTime; // 완전 차단 중엔 되돌림
+      showNudgeToast("완전 차단 중엔 리셋 시각을 바꿀 수 없어.");
+      return;
+    }
     s.resetTime = resetTimeInput.value || "00:00";
     save();
     checkAndRollPeriod();
@@ -429,9 +463,17 @@ jQuery(async () => {
   updateSendButtonState();
 
   // 활동 감지 (활성 시간 트래킹용)
-  ["mousedown", "keydown", "touchstart", "scroll"].forEach(evt => {
+  // scroll은 뺌: AI 응답 스트리밍될 때 자동 스크롤이 사람 활동으로 오인되는 버그 방지
+  ["mousedown", "keydown", "touchstart"].forEach(evt => {
     document.addEventListener(evt, markActivity, { passive: true });
   });
+
+  // document.hidden 하나만 믿지 않고 여러 신호를 결합해서 백그라운드 감지 견고하게
+  document.addEventListener("visibilitychange", () => { isPageVisible = !document.hidden; });
+  window.addEventListener("blur", () => { isPageVisible = false; });
+  window.addEventListener("focus", () => { isPageVisible = !document.hidden; });
+  window.addEventListener("pagehide", () => { isPageVisible = false; });
+  window.addEventListener("pageshow", () => { isPageVisible = !document.hidden; });
 
   // 메시지 전송 카운트
   eventSource.on(event_types.MESSAGE_SENT, () => {
