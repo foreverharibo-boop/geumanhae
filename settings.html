@@ -27,8 +27,23 @@
         </div>
       </div>
 
-      <!-- 리밋 설정 -->
+      <!-- 제한 방식 선택 -->
       <div class="gmh-panel">
+        <div class="gmh-title"><span class="gmh-icon">🧭</span>제한 방식</div>
+        <div class="gmh-radio-group" id="gmh-limittype-group">
+          <div class="gmh-radio-option gmh-selected" data-limittype="usage">
+            <div class="gmh-dot"></div>
+            <div>사용량 기반</div>
+          </div>
+          <div class="gmh-radio-option" data-limittype="schedule">
+            <div class="gmh-dot"></div>
+            <div>시간대 기반</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 리밋 설정 (사용량 기반) -->
+      <div class="gmh-panel" id="gmh-usage-panel">
         <div class="gmh-title"><span class="gmh-icon">⏱️</span>일일 제한</div>
         <div class="gmh-row">
           <div>
@@ -48,7 +63,31 @@
         </div>
       </div>
 
-      <!-- 초과 시 동작 -->
+      <!-- 시간대 제한 (시간대 기반) -->
+      <div class="gmh-panel" id="gmh-schedule-panel" style="display:none;">
+        <div class="gmh-title"><span class="gmh-icon">🌙</span>시간대 제한</div>
+        <div class="gmh-radio-group" id="gmh-schedulemode-group">
+          <div class="gmh-radio-option gmh-selected" data-schedulemode="curfew">
+            <div class="gmh-dot"></div>
+            <div>커퓨 (이 시간대는 금지)</div>
+          </div>
+          <div class="gmh-radio-option" data-schedulemode="window">
+            <div class="gmh-dot"></div>
+            <div>허용 윈도 (이 시간대만 허용)</div>
+          </div>
+        </div>
+        <div class="gmh-row">
+          <div class="gmh-row-label">시작</div>
+          <input type="time" id="gmh-schedule-start-input" value="23:00" />
+        </div>
+        <div class="gmh-row">
+          <div class="gmh-row-label">종료</div>
+          <input type="time" id="gmh-schedule-end-input" value="07:00" />
+        </div>
+        <div class="gmh-row-label" id="gmh-schedule-status" style="margin-top:6px; padding-top:6px;"></div>
+      </div>
+
+      <!-- 초과 시 동작 (공용 - 사용량이든 시간대든 동일하게 적용) -->
       <div class="gmh-panel">
         <div class="gmh-title"><span class="gmh-icon">🚫</span>초과 시 동작</div>
         <div class="gmh-radio-group" id="gmh-mode-group">

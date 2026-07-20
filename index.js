@@ -3,16 +3,20 @@ import { extension_settings, getContext } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
 const EXT_ID = "geumanhae";
-const EXT_VERSION = "1.1.5"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
+const EXT_VERSION = "1.2.0"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
 const ACTIVE_TICK_MS = 30 * 1000; // 30초마다 활성 시간 누적 체크
 const IDLE_THRESHOLD_MS = 3 * 60 * 1000; // 3분 이상 입력/조작 없으면 비활성으로 간주
 
 const defaultSettings = {
   enabled: true,
+  limitType: "usage",     // "usage" | "schedule" - 사용량 기반 vs 시간대 기반, 양자택일
   timeLimitMin: 150,       // 0 = 무제한
   msgLimit: 80,            // 0 = 무제한
   resetTime: "00:00",      // HH:MM, 하루 기준 리셋 시각
-  mode: "bypass",          // "bypass" | "block"
+  scheduleMode: "curfew",  // "curfew"(이 시간대 금지) | "window"(이 시간대만 허용)
+  scheduleStart: "23:00",
+  scheduleEnd: "07:00",
+  mode: "bypass",          // "bypass" | "block" - 리밋(사용량이든 시간대든) 초과 시 공통 동작
   nudgeEnabled: true,
   nudgeIntervalMin: 30,
   // ---- 아래는 트래킹 데이터, 사용자가 UI로 직접 안 건드림 ----
@@ -161,8 +165,8 @@ function updateStatUI() {
   if (timeLabel) timeLabel.textContent = s.timeLimitMin > 0 ? `목표 ${s.timeLimitMin}분` : "제한 없음";
   if (msgLabel) msgLabel.textContent = s.msgLimit > 0 ? `목표 ${s.msgLimit}개` : "제한 없음";
 
-  const timeRatio = s.timeLimitMin > 0 ? usedMin / s.timeLimitMin : 0;
-  const msgRatio = s.msgLimit > 0 ? usedMsg / s.msgLimit : 0;
+  const timeRatio = (s.limitType === "usage" && s.timeLimitMin > 0) ? usedMin / s.timeLimitMin : 0;
+  const msgRatio = (s.limitType === "usage" && s.msgLimit > 0) ? usedMsg / s.msgLimit : 0;
   const ratio = Math.max(timeRatio, msgRatio);
 
   const fill = panel.querySelector("#gmh-progress-fill");
@@ -173,8 +177,25 @@ function updateStatUI() {
   }
   const timeBox = panel.querySelector("#gmh-stat-time-box");
   const msgBox = panel.querySelector("#gmh-stat-msg-box");
-  if (timeBox) timeBox.classList.toggle("gmh-danger", s.timeLimitMin > 0 && usedMin >= s.timeLimitMin);
-  if (msgBox) msgBox.classList.toggle("gmh-danger", s.msgLimit > 0 && usedMsg >= s.msgLimit);
+  if (timeBox) timeBox.classList.toggle("gmh-danger", s.limitType === "usage" && s.timeLimitMin > 0 && usedMin >= s.timeLimitMin);
+  if (msgBox) msgBox.classList.toggle("gmh-danger", s.limitType === "usage" && s.msgLimit > 0 && usedMsg >= s.msgLimit);
+
+  // 제한 방식에 따라 일일제한/시간대제한 패널 표시 전환
+  const usagePanel = panel.querySelector("#gmh-usage-panel");
+  const schedulePanel = panel.querySelector("#gmh-schedule-panel");
+  if (usagePanel) usagePanel.style.display = s.limitType === "usage" ? "" : "none";
+  if (schedulePanel) schedulePanel.style.display = s.limitType === "schedule" ? "" : "none";
+
+  // 시간대 기반 현재 상태 표시
+  const scheduleStatus = panel.querySelector("#gmh-schedule-status");
+  if (scheduleStatus && s.limitType === "schedule") {
+    const blocked = isScheduleBlocked();
+    const next = getNextUnlockTime();
+    const nextStr = `${String(next.getHours()).padStart(2, "0")}:${String(next.getMinutes()).padStart(2, "0")}`;
+    scheduleStatus.textContent = blocked
+      ? `🚫 지금은 차단 중 (${nextStr}에 풀림)`
+      : `✅ 지금은 사용 가능 (${nextStr}부터 ${s.scheduleMode === "curfew" ? "차단" : "제한"})`;
+  }
 
   updateSendButtonState();
 }
@@ -231,11 +252,55 @@ function updateSendButtonState() {
     resetTimeInput.classList.toggle("gmh-send-disabled", shouldBlock);
     resetTimeInput.title = shouldBlock ? "완전 차단 중엔 리셋 시각을 바꿀 수 없어" : "";
   }
+
+  // 제한 방식/시간대 설정도 완전 차단 중엔 못 바꾸게 (사용량↔시간대 전환, 시간대 값 조작 등 우회 방지)
+  const limitTypeGroup = panel ? panel.querySelector("#gmh-limittype-group") : null;
+  const scheduleModeGroup = panel ? panel.querySelector("#gmh-schedulemode-group") : null;
+  const scheduleStartInput = panel ? panel.querySelector("#gmh-schedule-start-input") : null;
+  const scheduleEndInput = panel ? panel.querySelector("#gmh-schedule-end-input") : null;
+  [limitTypeGroup, scheduleModeGroup].forEach(el => {
+    if (!el) return;
+    el.classList.toggle("gmh-send-disabled", shouldBlock);
+    el.title = shouldBlock ? "완전 차단 중엔 바꿀 수 없어" : "";
+  });
+  [scheduleStartInput, scheduleEndInput].forEach(inp => {
+    if (!inp) return;
+    inp.disabled = shouldBlock;
+    inp.classList.toggle("gmh-send-disabled", shouldBlock);
+    inp.title = shouldBlock ? "완전 차단 중엔 바꿀 수 없어" : "";
+  });
+}
+
+// ---- 시간대 기반 판정 ----
+// start~end(HH:MM) 구간에 현재 시각이 포함되는지. start>end면 자정 넘어가는 구간으로 처리 (예: 23:00~07:00)
+function isWithinTimeRange(startStr, endStr) {
+  const [sh, sm] = startStr.split(":").map(Number);
+  const [eh, em] = endStr.split(":").map(Number);
+  const startMin = sh * 60 + sm;
+  const endMin = eh * 60 + em;
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+
+  if (startMin === endMin) return true; // 시작=종료면 하루 종일로 취급
+  if (startMin < endMin) {
+    return nowMin >= startMin && nowMin < endMin;
+  }
+  // 자정을 넘어가는 구간 (예: 23:00 ~ 07:00)
+  return nowMin >= startMin || nowMin < endMin;
+}
+
+function isScheduleBlocked() {
+  const s = getSettings();
+  const inRange = isWithinTimeRange(s.scheduleStart, s.scheduleEnd);
+  return s.scheduleMode === "curfew" ? inRange : !inRange;
 }
 
 // ---- 리밋 판정 ----
 function isOverLimit() {
   const s = getSettings();
+  if (s.limitType === "schedule") {
+    return isScheduleBlocked();
+  }
   const usedMin = s.data.totalActiveMs / 60000;
   const overTime = s.timeLimitMin > 0 && usedMin >= s.timeLimitMin;
   const overMsg = s.msgLimit > 0 && s.data.messageCount >= s.msgLimit;
@@ -263,6 +328,29 @@ function interceptSend(e) {
   }
 }
 
+// ---- 다음 잠금 해제 시각 계산 ----
+function getNextUnlockTime() {
+  const s = getSettings();
+  const now = new Date();
+  let boundaryH, boundaryM;
+
+  if (s.limitType === "schedule") {
+    // curfew: 커퓨 구간이 끝나는 시각(end)이 해제 시각
+    // window: 허용 구간이 시작되는 시각(start)이 해제 시각
+    const [sh, sm] = s.scheduleStart.split(":").map(Number);
+    const [eh, em] = s.scheduleEnd.split(":").map(Number);
+    boundaryH = s.scheduleMode === "curfew" ? eh : sh;
+    boundaryM = s.scheduleMode === "curfew" ? em : sm;
+  } else {
+    [boundaryH, boundaryM] = s.resetTime.split(":").map(Number);
+  }
+
+  const next = new Date(now);
+  next.setHours(boundaryH, boundaryM, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  return next;
+}
+
 function closeModal() {
   const dlg = document.getElementById("gmh-limit-modal-native");
   if (dlg) {
@@ -288,9 +376,15 @@ function openDialog(innerHtml) {
 }
 
 function showBypassModal() {
+  const s = getSettings();
+  const isSchedule = s.limitType === "schedule";
+  const title = isSchedule ? "지금은 금지 시간대야" : "오늘 목표 넘었어";
+  const body = isSchedule
+    ? `설정한 금지 시간대(${s.scheduleMode === "curfew" ? s.scheduleStart + "~" + s.scheduleEnd : "허용 윈도 밖"})야.<br>그래도 계속 쓸래?`
+    : "설정한 사용 시간/메시지 한도를 초과했어.<br>그래도 계속 쓸래?";
   const dlg = openDialog(`
-    <div class="gmh-modal-title">오늘 목표 넘었어</div>
-    <div class="gmh-modal-body">설정한 사용 시간/메시지 한도를 초과했어.<br>그래도 계속 쓸래?</div>
+    <div class="gmh-modal-title">${title}</div>
+    <div class="gmh-modal-body">${body}</div>
     <div class="gmh-modal-btns">
       <button id="gmh-modal-cancel">그만할게</button>
       <button id="gmh-modal-continue" class="gmh-btn-primary">그래도 계속</button>
@@ -305,16 +399,16 @@ function showBypassModal() {
 
 function showBlockModal() {
   const s = getSettings();
-  const [h, m] = s.resetTime.split(":").map(Number);
-  const now = new Date();
-  const nextReset = new Date(now);
-  nextReset.setHours(h, m, 0, 0);
-  if (nextReset <= now) nextReset.setDate(nextReset.getDate() + 1);
+  const isSchedule = s.limitType === "schedule";
+  const nextUnlock = getNextUnlockTime();
+  const bodyText = isSchedule
+    ? "완전 차단 모드라 금지 시간대가 끝날 때까지는 전송이 안 돼."
+    : "완전 차단 모드라 리셋 시각까지는 전송이 안 돼.";
 
   const dlg = openDialog(`
     <div class="gmh-modal-title">오늘은 여기까지</div>
     <div class="gmh-countdown" id="gmh-countdown">--:--:--</div>
-    <div class="gmh-modal-body">완전 차단 모드라 리셋 시각까지는 전송이 안 돼.</div>
+    <div class="gmh-modal-body">${bodyText}</div>
     <div class="gmh-modal-btns">
       <button id="gmh-modal-close" class="gmh-btn-primary">알겠어</button>
     </div>`);
@@ -322,7 +416,7 @@ function showBlockModal() {
 
   const countdownEl = dlg.querySelector("#gmh-countdown");
   const timer = setInterval(() => {
-    const diff = nextReset - Date.now();
+    const diff = nextUnlock - Date.now();
     if (diff <= 0 || !document.documentElement.contains(dlg)) {
       clearInterval(timer);
       return;
@@ -352,6 +446,10 @@ function bindSettingsUI() {
   const nudgeIntervalInput = panel.querySelector("#gmh-nudge-interval-input");
   const modeGroup = panel.querySelector("#gmh-mode-group");
   const resetBtn = panel.querySelector("#gmh-reset-today-btn");
+  const limitTypeGroup = panel.querySelector("#gmh-limittype-group");
+  const scheduleModeGroup = panel.querySelector("#gmh-schedulemode-group");
+  const scheduleStartInput = panel.querySelector("#gmh-schedule-start-input");
+  const scheduleEndInput = panel.querySelector("#gmh-schedule-end-input");
 
   enabledToggle.classList.toggle("gmh-on", s.enabled);
   nudgeToggle.classList.toggle("gmh-on", s.nudgeEnabled);
@@ -359,8 +457,16 @@ function bindSettingsUI() {
   msgLimitInput.value = s.msgLimit;
   resetTimeInput.value = s.resetTime;
   nudgeIntervalInput.value = s.nudgeIntervalMin;
+  scheduleStartInput.value = s.scheduleStart;
+  scheduleEndInput.value = s.scheduleEnd;
   modeGroup.querySelectorAll(".gmh-radio-option").forEach(opt => {
     opt.classList.toggle("gmh-selected", opt.dataset.mode === s.mode);
+  });
+  limitTypeGroup.querySelectorAll(".gmh-radio-option").forEach(opt => {
+    opt.classList.toggle("gmh-selected", opt.dataset.limittype === s.limitType);
+  });
+  scheduleModeGroup.querySelectorAll(".gmh-radio-option").forEach(opt => {
+    opt.classList.toggle("gmh-selected", opt.dataset.schedulemode === s.scheduleMode);
   });
 
   enabledToggle.addEventListener("click", () => {
@@ -444,6 +550,57 @@ function bindSettingsUI() {
     bypassOnce = false;
     save();
     updateStatUI();
+  });
+
+  limitTypeGroup.querySelectorAll(".gmh-radio-option").forEach(opt => {
+    opt.addEventListener("click", () => {
+      const cur = getSettings();
+      if (cur.enabled && cur.mode === "block" && isOverLimit()) {
+        showNudgeToast("완전 차단 중엔 제한 방식을 바꿀 수 없어.");
+        return;
+      }
+      s.limitType = opt.dataset.limittype;
+      limitTypeGroup.querySelectorAll(".gmh-radio-option").forEach(o => o.classList.remove("gmh-selected"));
+      opt.classList.add("gmh-selected");
+      save();
+      updateStatUI();
+    });
+  });
+  scheduleModeGroup.querySelectorAll(".gmh-radio-option").forEach(opt => {
+    opt.addEventListener("click", () => {
+      const cur = getSettings();
+      if (cur.enabled && cur.mode === "block" && isOverLimit()) {
+        showNudgeToast("완전 차단 중엔 바꿀 수 없어.");
+        return;
+      }
+      s.scheduleMode = opt.dataset.schedulemode;
+      scheduleModeGroup.querySelectorAll(".gmh-radio-option").forEach(o => o.classList.remove("gmh-selected"));
+      opt.classList.add("gmh-selected");
+      save();
+      updateStatUI();
+    });
+  });
+  ["change", "input"].forEach(evt => {
+    scheduleStartInput.addEventListener(evt, () => {
+      const cur = getSettings();
+      if (cur.enabled && cur.mode === "block" && isOverLimit()) {
+        scheduleStartInput.value = cur.scheduleStart;
+        return;
+      }
+      s.scheduleStart = scheduleStartInput.value || "23:00";
+      save();
+      updateStatUI();
+    });
+    scheduleEndInput.addEventListener(evt, () => {
+      const cur = getSettings();
+      if (cur.enabled && cur.mode === "block" && isOverLimit()) {
+        scheduleEndInput.value = cur.scheduleEnd;
+        return;
+      }
+      s.scheduleEnd = scheduleEndInput.value || "07:00";
+      save();
+      updateStatUI();
+    });
   });
 }
 
