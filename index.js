@@ -3,7 +3,7 @@ import { extension_settings, getContext } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
 const EXT_ID = "geumanhae";
-const EXT_VERSION = "1.2.0"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
+const EXT_VERSION = "1.2.1"; // 콘솔에 이 버전이 안 뜨면 캐시된 옛날 index.js가 실행 중인 것
 const ACTIVE_TICK_MS = 30 * 1000; // 30초마다 활성 시간 누적 체크
 const IDLE_THRESHOLD_MS = 3 * 60 * 1000; // 3분 이상 입력/조작 없으면 비활성으로 간주
 
@@ -190,7 +190,7 @@ function updateStatUI() {
   const scheduleStatus = panel.querySelector("#gmh-schedule-status");
   if (scheduleStatus && s.limitType === "schedule") {
     const blocked = isScheduleBlocked();
-    const next = getNextUnlockTime();
+    const next = blocked ? getNextUnlockTime() : getNextBlockStartTime();
     const nextStr = `${String(next.getHours()).padStart(2, "0")}:${String(next.getMinutes()).padStart(2, "0")}`;
     scheduleStatus.textContent = blocked
       ? `🚫 지금은 차단 중 (${nextStr}에 풀림)`
@@ -328,7 +328,7 @@ function interceptSend(e) {
   }
 }
 
-// ---- 다음 잠금 해제 시각 계산 ----
+// ---- 다음 잠금 해제 시각 계산 (차단 중 → 언제 풀리는지) ----
 function getNextUnlockTime() {
   const s = getSettings();
   const now = new Date();
@@ -344,6 +344,25 @@ function getNextUnlockTime() {
   } else {
     [boundaryH, boundaryM] = s.resetTime.split(":").map(Number);
   }
+
+  const next = new Date(now);
+  next.setHours(boundaryH, boundaryM, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  return next;
+}
+
+// ---- 다음 차단 시작 시각 계산 (사용 가능 중 → 언제부터 막히는지, 시간대 기반 전용) ----
+function getNextBlockStartTime() {
+  const s = getSettings();
+  if (s.limitType !== "schedule") return null; // 사용량 기반은 "리밋 도달 시점"이라 시각으로 못 정함
+
+  const now = new Date();
+  const [sh, sm] = s.scheduleStart.split(":").map(Number);
+  const [eh, em] = s.scheduleEnd.split(":").map(Number);
+  // curfew: 차단이 시작되는 시각은 start
+  // window: 허용 구간이 닫히는(=차단 시작되는) 시각은 end
+  const boundaryH = s.scheduleMode === "curfew" ? sh : eh;
+  const boundaryM = s.scheduleMode === "curfew" ? sm : em;
 
   const next = new Date(now);
   next.setHours(boundaryH, boundaryM, 0, 0);
